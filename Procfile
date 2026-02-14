@@ -1,1 +1,2 @@
-python Hedonia.py
+worker: python Hedonia.py
+
