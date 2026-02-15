@@ -2,17 +2,21 @@ import discord
 from discord.ext import commands
 import json
 import asyncio
+from datetime import timedelta
+import os
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 WARN_FILE = "warns.json"
 LOG_CHANNEL_NAME = "mod-log"
+VOICE_CHANNEL_ID = 1472291241634037931  # kendi ses kanalın
 
-# Warn verisini yükle
+# ===== WARN SYSTEM =====
 def load_warns():
     try:
         with open(WARN_FILE, "r") as f:
@@ -31,11 +35,28 @@ async def log(ctx, message):
     if channel:
         await channel.send(message)
 
+# ===== READY + VOICE (TEK SEFER) =====
 @bot.event
 async def on_ready():
     print(f"{bot.user} aktif!")
 
-# WARN
+    channel = bot.get_channel(VOICE_CHANNEL_ID)
+    if not channel:
+        print("Ses kanalı bulunamadı")
+        return
+
+    vc = channel.guild.voice_client
+    if vc and vc.is_connected():
+        print("Zaten seste")
+        return
+
+    try:
+        await channel.connect()
+        print("Ses kanalına bağlandı")
+    except Exception as e:
+        print("Ses hatası:", e)
+
+# ===== WARN =====
 @bot.command()
 @commands.has_permissions(manage_messages=True)
 async def warn(ctx, member: discord.Member, *, reason="Sebep yok"):
@@ -45,45 +66,40 @@ async def warn(ctx, member: discord.Member, *, reason="Sebep yok"):
     warns.setdefault(gid, {})
     warns[gid].setdefault(uid, [])
     warns[gid][uid].append(reason)
-
     save_warns(warns)
 
     count = len(warns[gid][uid])
-
     await ctx.send(f"{member} uyarıldı ({count} warn)")
     await log(ctx, f"{member} warn aldı: {reason}")
 
-    # Otomatik ceza
     if count == 3:
-        await member.timeout(discord.utils.utcnow() + discord.timedelta(minutes=10))
+        await member.timeout(discord.utils.utcnow() + timedelta(minutes=10))
         await ctx.send(f"{member} 10 dk timeout aldı")
 
     if count == 5:
         await member.kick(reason="5 warn")
         await ctx.send(f"{member} kicklendi (5 warn)")
 
-# WARN GÖRÜNTÜLE
+# ===== WARN LIST =====
 @bot.command()
 async def warnings(ctx, member: discord.Member):
     gid = str(ctx.guild.id)
     uid = str(member.id)
 
     if gid in warns and uid in warns[gid]:
-        data = warns[gid][uid]
-        text = "\n".join(f"{i+1}. {r}" for i, r in enumerate(data))
+        text = "\n".join(f"{i+1}. {r}" for i, r in enumerate(warns[gid][uid]))
         await ctx.send(f"{member} warnları:\n{text}")
     else:
         await ctx.send("Warn yok")
 
-# MUTE (timeout)
+# ===== MUTE =====
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def mute(ctx, member: discord.Member, minutes: int):
-    await member.timeout(discord.utils.utcnow() + discord.timedelta(minutes=minutes))
+    await member.timeout(discord.utils.utcnow() + timedelta(minutes=minutes))
     await ctx.send(f"{member} {minutes} dk mute")
     await log(ctx, f"{member} mute aldı")
 
-# UNMUTE
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def unmute(ctx, member: discord.Member):
@@ -91,7 +107,7 @@ async def unmute(ctx, member: discord.Member):
     await ctx.send(f"{member} unmute edildi")
     await log(ctx, f"{member} unmute")
 
-# ROL VER
+# ===== ROLE =====
 @bot.command()
 @commands.has_permissions(manage_roles=True)
 async def role(ctx, member: discord.Member, role: discord.Role):
@@ -99,7 +115,7 @@ async def role(ctx, member: discord.Member, role: discord.Role):
     await ctx.send(f"{member} rol aldı: {role}")
     await log(ctx, f"{member} rol aldı {role}")
 
-# CLEAR
+# ===== CLEAR =====
 @bot.command()
 @commands.has_permissions(manage_messages=True)
 async def clear(ctx, amount: int):
@@ -108,7 +124,7 @@ async def clear(ctx, amount: int):
     await asyncio.sleep(3)
     await msg.delete()
 
-# ANTISPAM
+# ===== ANTISPAM (BASİT & GÜVENLİ) =====
 spam = {}
 
 @bot.event
@@ -121,34 +137,11 @@ async def on_message(message):
     spam[uid] += 1
 
     if spam[uid] > 5:
-        await message.author.timeout(discord.utils.utcnow() + discord.timedelta(minutes=1))
+        await message.author.timeout(discord.utils.utcnow() + timedelta(minutes=1))
+        spam[uid] = 0
         await message.channel.send(f"{message.author} spam yaptı, timeout!")
 
     await bot.process_commands(message)
 
-
-VOICE_CHANNEL_ID = 1472291241634037931  # kendi kanal ID
-
-async def keep_voice():
-    await bot.wait_until_ready()
-    while not bot.is_closed():
-        channel = bot.get_channel(VOICE_CHANNEL_ID)
-
-        if channel:
-            if not channel.guild.voice_client:
-                try:
-                    await channel.connect()
-                    print("Ses kanalına bağlandı")
-                except:
-                    pass
-
-        await asyncio.sleep(10)  # her 10 saniye kontrol
-
-@bot.event
-async def on_ready():
-    print(f"{bot.user} aktif!")
-    bot.loop.create_task(keep_voice())
-
-
-
-bot.run("TOKEN")
+# ===== RUN =====
+bot.run(os.getenv("TOKEN"))
