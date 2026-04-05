@@ -4,7 +4,22 @@ import json
 import asyncio
 from datetime import timedelta
 import os
+from flask import Flask
+from threading import Thread
 
+# ===== KEEP ALIVE =====
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot çalışıyor!"
+
+def keep_alive():
+    t = Thread(target=lambda: app.run(host='0.0.0.0', port=8080))
+    t.daemon = True
+    t.start()
+
+# ===== BOT SETUP =====
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -14,7 +29,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 WARN_FILE = "warns.json"
 LOG_CHANNEL_NAME = "mod-log"
-VOICE_CHANNEL_ID = 1472291241634037931  # kendi ses kanalın
+VOICE_CHANNEL_ID = 1472291241634037931
 
 # ===== WARN SYSTEM =====
 def load_warns():
@@ -35,7 +50,7 @@ async def log(ctx, message):
     if channel:
         await channel.send(message)
 
-# ===== READY + VOICE (TEK SEFER) =====
+# ===== READY + VOICE =====
 @bot.event
 async def on_ready():
     print(f"{bot.user} aktif!")
@@ -124,7 +139,7 @@ async def clear(ctx, amount: int):
     await asyncio.sleep(3)
     await msg.delete()
 
-# ===== ANTISPAM (BASİT & GÜVENLİ) =====
+# ===== ANTISPAM =====
 spam = {}
 
 @bot.event
@@ -144,4 +159,5 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ===== RUN =====
+keep_alive()
 bot.run(os.getenv("TOKEN"))
