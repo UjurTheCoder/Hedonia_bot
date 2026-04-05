@@ -1,0 +1,2 @@
+[deployment]
+run = "python Hedonia.py"
